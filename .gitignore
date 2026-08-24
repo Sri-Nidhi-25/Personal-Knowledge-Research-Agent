@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.class
+backend/venv/
+.venv/
+dist/
+build/
+*.egg-info/
+
+# Environment and Secrets
+.env
+*.local
+*.key
+
+# Data & Persistence (leave demo data if specified)
+data/chroma/
+data/database/*.db
+data/database/*.db-journal
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+tools/node/
+
+# Logs & Temporary
+*.log
+scratch/
+extracted_specs/
+.DS_Store
+Thumbs.db

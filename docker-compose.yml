@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  knowledge-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: personal-knowledge-research-agent
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      - APP_NAME=Personal Knowledge Research Agent
+      - DEBUG=False
+      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
+      - LLM_MODEL=${LLM_MODEL:-default}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-hash}
+      - SEARCH_PROVIDER=${SEARCH_PROVIDER:-mock}
+      - SEARCH_API_KEY=${SEARCH_API_KEY:-}
+    volumes:
+      - agent-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  agent-data:
+    driver: local
