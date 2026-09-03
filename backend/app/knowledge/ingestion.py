@@ -2,7 +2,7 @@
 import hashlib
 import io
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, Tuple, Optional
 import pypdf
@@ -117,7 +117,7 @@ class IngestionService:
 
             # Register in SQLite
             import json
-            now_iso = datetime.utcnow().isoformat()
+            now_iso = datetime.now(timezone.utc).isoformat()
             db_doc = DBDocument(
                 document_id=doc_id,
                 title=doc_title,
@@ -236,10 +236,18 @@ class IngestionService:
             db_doc = db.query(DBDocument).filter(DBDocument.document_id == document_id).first()
             if not db_doc:
                 return False
-            # Remove associated chunks
+            # Remove associated chunks from SQLite
             db.query(DBChunk).filter(DBChunk.document_id == document_id).delete()
             db.delete(db_doc)
             db.commit()
+
+            # Remove associated vectors from ChromaDB
+            try:
+                from backend.app.storage.chroma_store import chroma_store
+                chroma_store.delete_document_chunks(document_id)
+            except Exception:
+                pass
+
             return True
         finally:
             db.close()
@@ -260,7 +268,19 @@ class IngestionService:
         scanned = 0
 
         for file_path in folder.rglob("*"):
-            if file_path.is_file() and file_path.suffix.lower() in supported_exts:
+            if not file_path.is_file():
+                continue
+            
+            # Skip hidden files, system dirs, and research subdirectories
+            parts_lower = [p.lower() for p in file_path.parts]
+            if any(p in ("research", ".research", ".git", "__pycache__", ".vscode", "node_modules") for p in parts_lower[:-1]):
+                continue
+
+            # Skip auto-generated research notes so only user original documents are ingested for gap analysis
+            if file_path.name.lower().startswith("research_") or file_path.name.startswith("."):
+                continue
+
+            if file_path.suffix.lower() in supported_exts:
                 scanned += 1
                 try:
                     content = file_path.read_bytes()

@@ -127,3 +127,25 @@ def update_gap_status(gap_id: str, body: Dict[str, Any] = Body(...)) -> Dict[str
     if not success:
         raise HTTPException(status_code=404, detail="Gap not found")
     return {"gap_id": gap_id, "status": status}
+
+
+@router.get("/gaps/coverage/matrix")
+def get_coverage_matrix() -> Dict[str, Any]:
+    """Retrieve the full Concept x Role depth coverage matrix (0-5 scale)."""
+    from backend.app.storage.sqlite_db import SessionLocal, DBConcept, DBChunk
+    from backend.app.knowledge.deep_gap_engine import KnowledgeModelExtractor
+    db = SessionLocal()
+    try:
+        concepts = db.query(DBConcept).all()
+        chunks = db.query(DBChunk).all()
+        matrix = KnowledgeModelExtractor.build_coverage_matrix(concepts, chunks)
+        return {
+            "matrix": matrix,
+            "roles": [
+                "FOUNDATIONAL", "MECHANISM", "IMPLEMENTATION", "EVALUATION",
+                "LIMITATION", "FAILURE_MODE", "SECURITY", "TRADEOFF", "OPERATIONAL", "TEMPORAL"
+            ],
+            "total_concepts": len(concepts),
+        }
+    finally:
+        db.close()

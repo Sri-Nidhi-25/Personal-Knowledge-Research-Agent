@@ -119,6 +119,12 @@ export async function createManualGap(title, description, reason = '', priority_
   return res.json();
 }
 
+export async function fetchCoverageMatrix() {
+  const res = await fetch(`${API_BASE}/gaps/coverage/matrix`);
+  if (!res.ok) throw new Error(`Failed to fetch coverage matrix: ${res.statusText}`);
+  return res.json();
+}
+
 // --- Research Agent ---
 export async function startResearch({ gap_id = null, query = null }) {
   const res = await fetch(`${API_BASE}/research/start`, {
@@ -147,40 +153,64 @@ export async function fetchResearchRun(runId) {
 
 export function subscribeResearchEvents(runId, onEvent, onError) {
   const eventSource = new EventSource(`${API_BASE}/research/runs/${runId}/stream`);
+  let isClosed = false;
 
-  eventSource.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      onEvent({ type: event.type || 'message', data });
-    } catch {
-      onEvent({ type: event.type || 'message', raw: event.data });
+  const closeStream = () => {
+    if (!isClosed) {
+      isClosed = true;
+      try {
+        eventSource.close();
+      } catch {}
     }
   };
 
+  const handleEvent = (type, event) => {
+    if (isClosed) return;
+    try {
+      const parsed = JSON.parse(event.data);
+      const evtType = type || parsed.type || parsed.event_type || 'message';
+      onEvent({
+        type: evtType,
+        data: parsed.data || parsed,
+        message: parsed.message || (typeof parsed.data === 'string' ? parsed.data : ''),
+      });
+      if (evtType === 'done' || evtType === 'run_complete') {
+        closeStream();
+      }
+    } catch {
+      onEvent({ type: type || 'message', message: event.data, raw: event.data });
+    }
+  };
+
+  eventSource.onmessage = (event) => handleEvent('message', event);
+
   const eventTypes = [
-    'run_started', 'searching', 'search_complete', 'fetching',
-    'fetch_failed', 'evidence_extracted', 'extraction_complete',
+    'run_started', 'checklist_initialized', 'checklist_focus', 'checklist_ticked', 'checklist_complete',
+    'searching', 'search_results', 'search_complete', 'fetching',
+    'fetch_failed', 'fetching_notice', 'fetch_fallback', 'evidence_extracted', 'extraction_complete',
     'claims_synthesized', 'verifying', 'contradictions_found',
-    'synthesizing', 'proposal_ready', 'run_complete', 'done', 'error'
+    'synthesizing', 'proposal_ready', 'run_complete', 'done', 'error', 'budget_limit'
   ];
 
   eventTypes.forEach((evtName) => {
-    eventSource.addEventListener(evtName, (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        onEvent({ type: evtName, data });
-      } catch {
-        onEvent({ type: evtName, raw: event.data });
-      }
-    });
+    eventSource.addEventListener(evtName, (event) => handleEvent(evtName, event));
   });
 
   eventSource.onerror = (err) => {
-    if (onError) onError(err);
-    eventSource.close();
+    if (!isClosed && eventSource.readyState !== EventSource.CLOSED) {
+      if (onError) onError(err);
+    }
   };
 
-  return () => eventSource.close();
+  return closeStream;
+}
+
+export async function deleteProposal(proposalId) {
+  const res = await fetch(`${API_BASE}/research/proposals/${proposalId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`Failed to delete proposal: ${res.statusText}`);
+  return res.json();
 }
 
 // --- Proposals & Approval ---
@@ -221,3 +251,16 @@ export async function fetchEvaluationHistory() {
   if (!res.ok) throw new Error(`Failed to fetch evaluation history: ${res.statusText}`);
   return res.json();
 }
+
+export async function fetchProposalEvaluation(proposalId) {
+  const res = await fetch(`${API_BASE}/eval/proposal/${proposalId}`);
+  if (!res.ok) throw new Error(`Failed to evaluate proposal: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchResearchFilesAudit() {
+  const res = await fetch(`${API_BASE}/eval/research-files`);
+  if (!res.ok) throw new Error(`Failed to fetch research audit: ${res.statusText}`);
+  return res.json();
+}
+

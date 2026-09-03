@@ -77,16 +77,16 @@ def start_research(request: StartResearchRequest) -> ResearchRun:
         daemon=True,
     )
     t.start()
-
     return ResearchRun(
         run_id=run_id,
         gap_id=plan.gap_id,
         plan=plan,
+        checklist=plan.checklist,
         status="running",
         started_at=now,
-        sources=[],
-        evidence=[],
-        claims=[],
+        sources_found=0,
+        evidence_extracted=0,
+        claims_made=0,
     )
 
 
@@ -121,31 +121,42 @@ def list_runs(
         db.close()
 
 
-@router.get("/runs/{run_id}")
+@router.get("/runs/{run_id}", response_model=Dict[str, Any])
 def get_run(run_id: str) -> Dict[str, Any]:
     db = SessionLocal()
     try:
-        r = db.query(DBResearchRun).filter(DBResearchRun.run_id == run_id).first()
-        if not r:
+        run = db.query(DBResearchRun).filter(DBResearchRun.run_id == run_id).first()
+        if not run:
             raise HTTPException(status_code=404, detail="Run not found")
+
         sources = db.query(DBSource).filter(DBSource.run_id == run_id).all()
         evidence = db.query(DBEvidence).filter(DBEvidence.run_id == run_id).all()
         claims = db.query(DBClaim).filter(DBClaim.run_id == run_id).all()
-        events = (
-            db.query(DBResearchEvent)
-            .filter(DBResearchEvent.run_id == run_id)
-            .order_by(DBResearchEvent.timestamp)
-            .all()
-        )
+        events = db.query(DBResearchEvent).filter(DBResearchEvent.run_id == run_id).order_by(DBResearchEvent.timestamp).all()
+        proposal = db.query(DBKnowledgeProposal).filter(DBKnowledgeProposal.run_id == run_id).first()
+
+        plan_data = json.loads(run.plan_json) if run.plan_json else {}
+        checklist_data = []
+        if getattr(run, "checklist_json", None) and run.checklist_json and run.checklist_json != "[]":
+            try:
+                checklist_data = json.loads(run.checklist_json)
+            except Exception:
+                pass
+        if not checklist_data:
+            checklist_data = plan_data.get("checklist", [])
+
         return {
-            "run_id": r.run_id,
-            "gap_id": r.gap_id,
-            "status": r.status,
-            "started_at": r.started_at,
-            "completed_at": r.completed_at,
-            "sources_found": r.sources_found,
-            "evidence_extracted": r.evidence_extracted,
-            "claims_made": r.claims_made,
+            "run_id": run.run_id,
+            "gap_id": run.gap_id,
+            "status": run.status,
+            "started_at": run.started_at,
+            "completed_at": run.completed_at,
+            "sources_found": run.sources_found,
+            "evidence_extracted": run.evidence_extracted,
+            "claims_made": run.claims_made,
+            "proposal_id": proposal.proposal_id if proposal else None,
+            "plan": plan_data,
+            "checklist": checklist_data,
             "sources": [
                 {"source_id": s.source_id, "url": s.url, "title": s.title, "status": s.status}
                 for s in sources
@@ -177,7 +188,7 @@ async def stream_run_events(run_id: str):
 
     async def event_generator():
         last_event_index = 0
-        max_idle_cycles = 240  # ~120 seconds of polling for local LLM synthesis
+        max_idle_cycles = 300  # up to 150 seconds polling
         idle_cycles = 0
 
         while idle_cycles < max_idle_cycles:
@@ -207,24 +218,44 @@ async def stream_run_events(run_id: str):
                             "timestamp": ev.timestamp,
                         }
                         yield f"event: {ev.event_type}\ndata: {json.dumps(payload)}\n\n"
-                        yield f"data: {json.dumps(payload)}\n\n"
                     last_event_index = len(events)
                     idle_cycles = 0
                 else:
                     idle_cycles += 1
 
                 if run.status in ("completed", "failed", "cancelled"):
-                    done_payload = {"status": run.status, "run_id": run_id, "type": "run_complete", "message": f"Research run {run.status}"}
+                    final_chk = []
+                    if getattr(run, "checklist_json", None) and run.checklist_json and run.checklist_json != "[]":
+                        try:
+                            final_chk = json.loads(run.checklist_json)
+                        except Exception:
+                            pass
+                    if not final_chk and run.plan_json:
+                        try:
+                            final_chk = json.loads(run.plan_json).get("checklist", [])
+                        except Exception:
+                            pass
+                    done_payload = {
+                        "status": run.status,
+                        "run_id": run_id,
+                        "type": "run_complete",
+                        "event_type": "run_complete",
+                        "message": f"Research run {run.status}",
+                        "checklist": final_chk,
+                    }
                     yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"
-                    yield f"data: {json.dumps(done_payload)}\n\n"
                     break
 
             finally:
                 db.close()
+            await asyncio.sleep(0.1)
 
-            await asyncio.sleep(0.5)
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
 
 
 # --- Proposals ---
@@ -232,11 +263,11 @@ async def stream_run_events(run_id: str):
 @router.get("/proposals", response_model=List[Dict[str, Any]])
 def list_proposals(
     status: Optional[str] = Query(None),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=100),
 ) -> List[Dict[str, Any]]:
     db = SessionLocal()
     try:
-        q = db.query(DBKnowledgeProposal)
+        q = db.query(DBKnowledgeProposal).filter(DBKnowledgeProposal.status != "benchmark_evaluated")
         if status:
             q = q.filter(DBKnowledgeProposal.status == status)
         rows = q.order_by(DBKnowledgeProposal.created_at.desc()).limit(limit).all()
@@ -246,6 +277,10 @@ def list_proposals(
                 "run_id": r.run_id,
                 "gap_id": r.gap_id,
                 "title": r.title,
+                "content": r.content or "",
+                "summary": r.summary or "",
+                "sources": json.loads(r.sources_json or "[]"),
+                "claims": json.loads(r.claims_json or "[]"),
                 "status": r.status,
                 "created_at": r.created_at,
             }
@@ -279,6 +314,23 @@ def get_proposal(proposal_id: str) -> Dict[str, Any]:
         db.close()
 
 
+@router.delete("/proposals/{proposal_id}")
+def delete_proposal(proposal_id: str) -> Dict[str, Any]:
+    """Delete a proposal permanently."""
+    db = SessionLocal()
+    try:
+        r = db.query(DBKnowledgeProposal).filter(
+            DBKnowledgeProposal.proposal_id == proposal_id
+        ).first()
+        if not r:
+            raise HTTPException(status_code=404, detail="Proposal not found")
+        db.delete(r)
+        db.commit()
+        return {"proposal_id": proposal_id, "deleted": True}
+    finally:
+        db.close()
+
+
 @router.post("/proposals/{proposal_id}/action")
 def proposal_action(proposal_id: str, action: ProposalActionRequest) -> Dict[str, Any]:
     """
@@ -302,57 +354,35 @@ def proposal_action(proposal_id: str, action: ProposalActionRequest) -> Dict[str
                 if db_gap:
                     db_gap.status = "resolved"
 
-            # 2. Extract and link proposed relationships
-            from backend.app.knowledge.knowledge_repr import kr_service
-            import re
-            rel_matches = re.findall(r"\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|", r.content or "")
-            for src_name, rel_type, tgt_name in rel_matches:
-                if src_name != "Source Concept":
-                    kr_service.add_relationship(source_name=src_name, rel_type="related_to", target_name=tgt_name)
-
+            # 2. Update DB proposal record
             db.commit()
 
-            # 3. Determine original topic folder from existing source documents
+            # 3. Store in filesystem destinations
+            from backend.app.storage.filesystem import fs_store
             from backend.app.knowledge.ingestion import ingestion_service
-            from pathlib import Path
-            from backend.app.config.settings import settings
-            import os
+            import re
+            clean_title = r.title.replace("Proposal: ", "").replace("Research Plan: ", "").strip()
+            slug = re.sub(r"[^\w\s-]", "", clean_title).strip().lower()
+            slug = re.sub(r"[-\s]+", "_", slug)
+            filename = f"research_{slug}.md"
 
-            # Find the topic subfolder by looking at non-research documents' file paths
-            doc_dir = Path(settings.DOCUMENTS_DIR)
-            topic_subfolder = None
-            source_docs = db.query(DBDocument).filter(
-                DBDocument.status == "available"
-            ).all()
-            for sd in source_docs:
-                if sd.file_path:
-                    fp = Path(sd.file_path)
-                    # Check if the file lives in a named subfolder under data/documents/
-                    if fp.parent != doc_dir and fp.parent.parent == doc_dir:
-                        candidate = fp.parent.name
-                        if candidate != "research":
-                            topic_subfolder = candidate
-                            break
+            saved_paths = fs_store.save_research_to_destinations(
+                title=clean_title,
+                content=r.content or "",
+                run_id=r.run_id,
+                gap_id=r.gap_id
+            )
 
-            clean_title = r.title.replace("Knowledge Proposal: ", "").replace("Proposal: ", "").strip()
-            safe_slug = re.sub(r"[^a-zA-Z0-9_\-]+", "_", clean_title.lower()).strip("_")
-            filename = f"research_{safe_slug}.md" if safe_slug else f"research_{r.run_id}.md"
-
-            # Always save a copy to research folder
-            fs_store = Path(settings.DOCUMENTS_DIR) / "research"
-            fs_store.mkdir(parents=True, exist_ok=True)
-            (fs_store / filename).write_text(r.content or "", encoding="utf-8")
-
-            # Ingest into active knowledge corpus (and topic subfolder if present)
+            # Ingest into active knowledge corpus so it's searchable and linked in vector index
             ingestion_service.ingest_document(
                 filename=filename,
-                content=r.content.encode("utf-8"),
+                content=(r.content or "").encode("utf-8"),
                 title=f"Research: {clean_title}",
                 custom_metadata={"source": "research", "run_id": r.run_id, "proposal_id": r.proposal_id},
-                subfolder=topic_subfolder,
+                subfolder="research",
             )
-            folder_label = topic_subfolder or "research"
-            return {"proposal_id": proposal_id, "status": "approved", "message": f"Approved and added to '{folder_label}' corpus. Gap resolved."}
+            saved_locations_str = f"Saved to {len(saved_paths)} folder(s)" if saved_paths else "Saved"
+            return {"proposal_id": proposal_id, "status": "approved", "message": f"Approved and added to corpus. {saved_locations_str}. Gap resolved."}
 
         elif action.action == "reject":
             r.status = "rejected"

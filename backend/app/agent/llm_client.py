@@ -22,12 +22,19 @@ logger = logging.getLogger("app.llm")
 
 class LLMClient:
 
-    def __init__(self):
-        self.provider = settings.LLM_PROVIDER
-        self.api_key = settings.LLM_API_KEY
-        self.model = settings.LLM_MODEL
-        self.base_url = settings.LLM_BASE_URL
-        self.temperature = settings.LLM_TEMPERATURE
+    def __init__(
+        self,
+        provider: Optional[str] = None,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        base_url: Optional[str] = None,
+        temperature: Optional[float] = None,
+    ):
+        self.provider = provider if provider is not None else settings.LLM_PROVIDER
+        self.api_key = api_key if api_key is not None else settings.LLM_API_KEY
+        self.model = model if model is not None else settings.LLM_MODEL
+        self.base_url = base_url if base_url is not None else settings.LLM_BASE_URL
+        self.temperature = temperature if temperature is not None else settings.LLM_TEMPERATURE
 
     def generate_text(
         self,
@@ -57,13 +64,25 @@ class LLMClient:
         prompt: str,
         system_prompt: Optional[str] = None,
         temperature: Optional[float] = 0.0,
+        max_tokens: int = 1500,
     ) -> Dict[str, Any]:
         """
         Generate structured JSON from the configured LLM provider.
         Extracts JSON block if surrounded by ```json ... ``` markdown.
         """
+        if self.provider == "mock":
+            return json.loads(self._mock_generate(prompt, system_prompt))
+
         sys_prompt = (system_prompt or "") + "\nYou MUST respond ONLY with valid, parseable JSON."
-        raw_text = self.generate_text(prompt, system_prompt=sys_prompt.strip(), temperature=temperature)
+        temp = temperature if temperature is not None else 0.0
+
+        raw_text = self._call_openai_compatible(
+            prompt=prompt,
+            system_prompt=sys_prompt.strip(),
+            temperature=temp,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+        )
 
         # Extract JSON from code blocks if present
         json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", raw_text)
@@ -73,12 +92,18 @@ class LLMClient:
             return json.loads(candidate)
         except Exception as e:
             logger.warning("Failed to parse JSON from LLM response: %s", e)
-            # Try to find first { and last }
             first_brace = candidate.find("{")
             last_brace = candidate.rfind("}")
             if first_brace != -1 and last_brace != -1:
                 try:
                     return json.loads(candidate[first_brace:last_brace + 1])
+                except Exception:
+                    pass
+            first_bracket = candidate.find("[")
+            last_bracket = candidate.rfind("]")
+            if first_bracket != -1 and last_bracket != -1:
+                try:
+                    return json.loads(candidate[first_bracket:last_bracket + 1])
                 except Exception:
                     pass
             return {"raw_text": raw_text, "error": "JSON parse failed"}
@@ -93,6 +118,7 @@ class LLMClient:
         system_prompt: Optional[str],
         temperature: float,
         max_tokens: int,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> str:
         import httpx
 
@@ -124,22 +150,29 @@ class LLMClient:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        payload = {
+        payload: Dict[str, Any] = {
             "model": model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if response_format:
+            payload["response_format"] = response_format
 
-        resp = httpx.post(
-            f"{base_url.rstrip('/')}/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=120.0,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"].strip()
+        timeout = 120.0 if self.provider == "ollama" else 30.0
+        try:
+            resp = httpx.post(
+                f"{base_url.rstrip('/')}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            logger.warning("LLM call to %s failed (%s); falling back to rule engine.", base_url, e)
+            return self._mock_generate(prompt, system_prompt)
 
     def _mock_generate(self, prompt: str, system_prompt: Optional[str]) -> str:
         """Deterministic offline mock responses."""

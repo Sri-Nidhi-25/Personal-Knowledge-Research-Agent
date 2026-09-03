@@ -1,5 +1,5 @@
 """Core Data Models and Pydantic Schemas according to Data and API Specifications."""
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
@@ -104,12 +104,20 @@ class KnowledgeGap(BaseModel):
     title: str
     description: str
     gap_type: str = "missing_concept"
+    gap_types: List[str] = Field(default_factory=list)
     confidence: float = 0.8
     priority_score: float = 0.8
+    personal_relevance: float = 0.8
+    structural_importance: float = 0.8
+    current_relevance: float = 0.8
+    consequence: float = 0.8
+    counterfactual_impact: str = ""
+    evidence_signals: List[str] = Field(default_factory=list)
+    coverage_matrix_summary: Dict[str, Any] = Field(default_factory=dict)
     related_concepts: List[str] = Field(default_factory=list)
     status: str = "candidate"
     reason: str = ""
-    created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class GapDetectRequest(BaseModel):
@@ -122,6 +130,19 @@ class GapDetectResponse(BaseModel):
 
 
 # --- Research Domain ---
+class ResearchChecklistItem(BaseModel):
+    item_id: str
+    category: str = "Evaluation & Verification"
+    title: str
+    description: str
+    target_query: str = ""
+    status: str = "pending"  # "pending", "in_progress", "completed"
+    ticked: bool = False
+    evidence_count: int = 0
+    sources_found: List[str] = Field(default_factory=list)
+    key_findings: List[str] = Field(default_factory=list)
+
+
 class ResearchQuestion(BaseModel):
     question_id: str
     gap_id: str = ""
@@ -144,9 +165,11 @@ class ResearchPlan(BaseModel):
     plan_id: str
     gap_id: str
     title: str = ""
+    topic: str = ""
     questions: List[ResearchQuestion] = Field(default_factory=list)
+    checklist: List[ResearchChecklistItem] = Field(default_factory=list)
     search_queries: List[SearchQuery] = Field(default_factory=list)
-    max_sources: int = 10
+    max_sources: int = 15
     max_search_depth: int = 3
     status: str = "ready"
     created_at: str = ""
@@ -208,6 +231,7 @@ class ResearchRun(BaseModel):
     run_id: str
     gap_id: str
     plan: Optional[ResearchPlan] = None
+    checklist: List[ResearchChecklistItem] = Field(default_factory=list)
     status: str = "queued"
     started_at: str = ""
     completed_at: Optional[str] = None

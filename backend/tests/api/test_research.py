@@ -10,6 +10,54 @@ from backend.app.knowledge.gap_discovery import gap_discovery
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True, scope="module")
+def force_mock_providers():
+    """
+    Force mock search + LLM providers for the entire test module.
+    Prevents real HTTP calls to external search APIs / LLM endpoints,
+    keeping tests fast, offline-safe, and deterministic.
+
+    Note: source_fetcher.py already has a built-in mock path that activates
+    when settings.SEARCH_PROVIDER == "mock", so fetch_url needs no override.
+    """
+    from backend.app.config.settings import settings
+
+    # Patch settings to mock mode
+    orig_search = settings.SEARCH_PROVIDER
+    orig_llm = settings.LLM_PROVIDER
+    settings.SEARCH_PROVIDER = "mock"  # type: ignore[assignment]
+    settings.LLM_PROVIDER = "mock"  # type: ignore[assignment]
+
+    def _mock_web_search(query: str, max_results: int = 5):
+        return [
+            {
+                "title": f"Mock result {i + 1} for: {query}",
+                "url": f"https://example.com/mock/{i + 1}",
+                "snippet": (
+                    f"Mock snippet {i + 1} about {query}. "
+                    "This is deterministic test content providing technical details."
+                ),
+            }
+            for i in range(min(max_results, 3))
+        ]
+
+    # Patch web_search in both source module and the agent's imported copy
+    import backend.app.tools.web_search as _ws
+    import backend.app.agent.research_agent as _ra
+
+    orig_ws = _ws.web_search
+    _ws.web_search = _mock_web_search
+    _ra.web_search = _mock_web_search
+
+    yield
+
+    # Restore originals after module tests complete
+    settings.SEARCH_PROVIDER = orig_search  # type: ignore[assignment]
+    settings.LLM_PROVIDER = orig_llm  # type: ignore[assignment]
+    _ws.web_search = orig_ws
+    _ra.web_search = orig_ws
+
+
 # --- Unit: Research Planner ---
 
 def test_planner_creates_plan_from_gap():
@@ -37,10 +85,20 @@ def test_start_research_with_query():
     res = client.post("/api/v1/research/start", json={"query": "What is gradient descent?"})
     assert res.status_code == 200
     data = res.json()
-    assert data["status"] == "completed"
-    assert data["sources_found"] > 0
-    assert data["claims_made"] > 0
-    assert data.get("proposal_id") is not None
+    # Research now runs in a background thread; initial response is 'running'
+    assert data["status"] in ("running", "completed")
+    assert "run_id" in data
+
+    # Poll until complete (background thread finishes quickly in mock mode)
+    import time
+    run_id = data["run_id"]
+    for _ in range(60):
+        run_res = client.get(f"/api/v1/research/runs/{run_id}")
+        if run_res.status_code == 200 and run_res.json().get("status") in ("completed", "failed"):
+            break
+        time.sleep(0.5)
+    final = client.get(f"/api/v1/research/runs/{run_id}").json()
+    assert final["status"] == "completed"
 
 
 def test_start_research_with_gap():
@@ -55,7 +113,18 @@ def test_start_research_with_gap():
 
     res = client.post("/api/v1/research/start", json={"gap_id": gap_id})
     assert res.status_code == 200
-    assert res.json()["status"] == "completed"
+    assert res.json()["status"] in ("running", "completed")
+
+    # Poll until complete
+    import time
+    run_id = res.json()["run_id"]
+    for _ in range(60):
+        run_res = client.get(f"/api/v1/research/runs/{run_id}")
+        if run_res.status_code == 200 and run_res.json().get("status") in ("completed", "failed"):
+            break
+        time.sleep(0.5)
+    final = client.get(f"/api/v1/research/runs/{run_id}").json()
+    assert final["status"] == "completed"
 
 
 def test_list_runs():

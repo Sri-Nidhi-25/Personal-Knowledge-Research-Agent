@@ -4,14 +4,14 @@ from backend.app.agent.llm_client import LLMClient
 
 
 def test_mock_llm_generate_text():
-    client = LLMClient()
+    client = LLMClient(provider="mock")
     resp = client.generate_text("Explain transformer architecture")
     assert len(resp) > 0
     assert isinstance(resp, str)
 
 
 def test_mock_llm_generate_json_plan():
-    client = LLMClient()
+    client = LLMClient(provider="mock")
     data = client.generate_json("Create a research plan for Graph Neural Networks")
     assert isinstance(data, dict)
     assert "questions" in data
@@ -20,7 +20,7 @@ def test_mock_llm_generate_json_plan():
 
 
 def test_mock_llm_generate_json_verify():
-    client = LLMClient()
+    client = LLMClient(provider="mock")
     data = client.generate_json("Verify the following claim against evidence")
     assert isinstance(data, dict)
     assert "verification_status" in data

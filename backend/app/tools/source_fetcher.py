@@ -22,19 +22,23 @@ def fetch_url(url: str) -> Dict[str, Any]:
 
     import httpx
     try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
         resp = httpx.get(
             url,
             timeout=settings.FETCH_TIMEOUT_SECONDS,
             follow_redirects=True,
-            headers={"User-Agent": "PersonalKnowledgeAgent/0.1"},
+            headers=headers,
         )
         resp.raise_for_status()
 
         content = resp.text[:settings.MAX_CONTENT_LENGTH_BYTES]
 
-        # Simple HTML → text extraction
-        text = _strip_html(content)
-        title = _extract_title(content)
+        # Use BeautifulSoup for high quality text extraction
+        text, title = _parse_html_bs4(content)
 
         # Apply Trust Zone 4 security sanitization
         from backend.app.verification.trust_zones import sanitize_untrusted_text
@@ -46,6 +50,7 @@ def fetch_url(url: str) -> Dict[str, Any]:
             "text": sanitized_text,
             "content_length": len(sanitized_text),
             "status": "ok",
+            "success": True,
         }
     except Exception as e:
         logger.warning("Failed to fetch %s: %s", url, e)
@@ -55,6 +60,7 @@ def fetch_url(url: str) -> Dict[str, Any]:
             "text": "",
             "content_length": 0,
             "status": f"error: {str(e)[:200]}",
+            "success": False,
         }
 
 
@@ -72,23 +78,28 @@ def _mock_fetch(url: str) -> Dict[str, Any]:
         ),
         "content_length": 300,
         "status": "ok",
+        "success": True,
     }
 
 
-def _strip_html(html: str) -> str:
-    """Basic HTML tag removal. For production, use BeautifulSoup."""
-    import re
-    # Remove script and style blocks
-    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.DOTALL | re.IGNORECASE)
-    # Remove tags
-    text = re.sub(r"<[^>]+>", " ", text)
-    # Collapse whitespace
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
-
-
-def _extract_title(html: str) -> str:
-    """Extract <title> from HTML."""
-    import re
-    match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
-    return match.group(1).strip() if match else ""
+def _parse_html_bs4(html: str) -> tuple:
+    """Extract clean title and visible text from HTML using BeautifulSoup with regex fallback."""
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "html.parser")
+        
+        # Remove noisy elements
+        for tag in soup(["script", "style", "nav", "footer", "header", "noscript", "svg", "form"]):
+            tag.decompose()
+            
+        title = soup.title.string.strip() if (soup.title and soup.title.string) else ""
+        text = soup.get_text(separator=" ", strip=True)
+        return text, title
+    except Exception:
+        import re
+        text = re.sub(r"<(script|style|nav|footer|header)[^>]*>.*?</\1>", " ", html, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+        title = match.group(1).strip() if match else ""
+        return text, title

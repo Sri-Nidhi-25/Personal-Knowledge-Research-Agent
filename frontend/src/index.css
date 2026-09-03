@@ -29,3 +29,10 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(100, 116, 139, 1);
 }
+
+/* Progress bar shimmer animation */
+@keyframes progress-slide {
+  0% { opacity: 0.4; transform: translateX(-100%); }
+  50% { opacity: 1; transform: translateX(0%); }
+  100% { opacity: 0.4; transform: translateX(100%); }
+}

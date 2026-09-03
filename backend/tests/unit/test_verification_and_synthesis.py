@@ -6,20 +6,21 @@ from backend.app.synthesis.synthesizer import KnowledgeSynthesizer
 
 
 def test_claim_verification_multi_source_agreement():
+    # 10 sources to test high-confidence multi-source rubric (>= 90%)
     sources = [
-        Source(source_id="src_1", run_id="run_1", url="https://example.com/1", title="Source 1", credibility_score=0.9),
-        Source(source_id="src_2", run_id="run_1", url="https://example.com/2", title="Source 2", credibility_score=0.85),
+        Source(source_id=f"src_{i}", run_id="run_1", url=f"https://example.com/{i}", title=f"Source {i}", credibility_score=0.9)
+        for i in range(1, 11)
     ]
     evidence = [
-        Evidence(evidence_id="ev_1", source_id="src_1", run_id="run_1", content="Transformer self-attention computes pairwise token weights."),
-        Evidence(evidence_id="ev_2", source_id="src_2", run_id="run_1", content="Self-attention allows transformers to weight pairwise token relationships."),
+        Evidence(evidence_id=f"ev_{i}", source_id=f"src_{i}", run_id="run_1", content=f"Transformer self-attention fact from source {i}.")
+        for i in range(1, 11)
     ]
     claims = [
         Claim(
             claim_id="clm_1",
             run_id="run_1",
             content="Transformer self-attention computes pairwise token weights.",
-            supporting_evidence=["ev_1", "ev_2"],
+            supporting_evidence=[f"ev_{i}" for i in range(1, 11)],
         )
     ]
 
@@ -29,7 +30,7 @@ def test_claim_verification_multi_source_agreement():
 
     assert len(verified_claims) == 1
     assert verified_claims[0].verification_status == "supported"
-    assert verified_claims[0].confidence >= 0.85
+    assert verified_claims[0].confidence >= 0.90
     assert len(verifications) == 1
     assert verifications[0].status == "supported"
 
@@ -70,6 +71,6 @@ def test_knowledge_synthesizer_builds_structured_markdown():
     assert proposal.proposal_id.startswith("prop_")
     assert "Retrieval-Augmented Generation" in proposal.title
     assert "## 1. Executive Summary" in proposal.content
-    assert "## 3. Verified Findings & Evidence" in proposal.content
-    assert "## 6. Sources & References" in proposal.content
+    assert "## 3. High-Confidence Verified Findings" in proposal.content
+    assert "Sources & References" in proposal.content
     assert "[1]" in proposal.content

@@ -69,7 +69,9 @@ def get_document_chunks(document_id: str) -> Dict[str, Any]:
 def get_knowledge_stats() -> Dict[str, Any]:
     """Return high-level statistics about the knowledge corpus."""
     from backend.app.storage.chroma_store import chroma_store
-    from backend.app.storage.sqlite_db import SessionLocal, DBDocument, DBChunk
+    from backend.app.storage.sqlite_db import (
+        SessionLocal, DBDocument, DBChunk, DBKnowledgeGap, DBKnowledgeProposal
+    )
 
     db = SessionLocal()
     try:
@@ -77,12 +79,23 @@ def get_knowledge_stats() -> Dict[str, Any]:
         chunk_count = db.query(DBChunk).count()
         available_docs = db.query(DBDocument).filter(DBDocument.status == "available").count()
         vector_count = chroma_store.count()
+        
+        active_gaps = db.query(DBKnowledgeGap).filter(DBKnowledgeGap.status != "resolved").count()
+        resolved_gaps = db.query(DBKnowledgeGap).filter(DBKnowledgeGap.status == "resolved").count()
+        pending_proposals = db.query(DBKnowledgeProposal).filter(DBKnowledgeProposal.status == "pending_review").count()
+        approved_proposals = db.query(DBKnowledgeProposal).filter(DBKnowledgeProposal.status == "approved").count()
 
         return {
             "total_documents": doc_count,
             "available_documents": available_docs,
             "total_chunks_sqlite": chunk_count,
             "total_vectors_chroma": vector_count,
+            "active_gaps": active_gaps,
+            "resolved_gaps": resolved_gaps,
+            "total_gaps": active_gaps + resolved_gaps,
+            "pending_proposals": pending_proposals,
+            "approved_proposals": approved_proposals,
+            "total_proposals": pending_proposals + approved_proposals,
         }
     finally:
         db.close()
@@ -129,16 +142,16 @@ def clear_knowledge_base() -> Dict[str, Any]:
         # Clean auto-generated files on disk (loose doc_* files and research subfolder contents)
         from pathlib import Path
         from backend.app.config.settings import settings
-        doc_dir = Path(settings.DOCUMENTS_DIR)
-        if doc_dir.exists():
-            for f in doc_dir.iterdir():
-                if f.is_file() and f.name.startswith("doc_"):
-                    f.unlink(missing_ok=True)
-            research_dir = doc_dir / "research"
-            if research_dir.exists():
-                for f in research_dir.iterdir():
-                    if f.is_file():
+        for target_dir in [Path(settings.DOCUMENTS_DIR), Path(settings.KNOWLEDGE_DIR), Path("data/knowledge"), Path("data/documents")]:
+            if target_dir.exists():
+                for f in target_dir.iterdir():
+                    if f.is_file() and f.name.startswith("doc_"):
                         f.unlink(missing_ok=True)
+                r_dir = target_dir / "research"
+                if r_dir.exists():
+                    for f in r_dir.iterdir():
+                        if f.is_file():
+                            f.unlink(missing_ok=True)
 
         return {
             "success": True,

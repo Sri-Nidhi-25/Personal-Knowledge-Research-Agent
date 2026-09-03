@@ -1,8 +1,8 @@
 """SQLite Database Layer using SQLAlchemy."""
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Generator
-from sqlalchemy import create_engine, Column, String, Integer, Float, Text, Boolean
+from sqlalchemy import create_engine, Column, String, Integer, Float, Text, Boolean, text
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from backend.app.config.settings import settings
 
@@ -19,28 +19,28 @@ class DBDocument(Base):
     status = Column(String, default="processing")
     raw_content = Column(Text, nullable=True)
     metadata_json = Column(Text, default="{}")
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
-    updated_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(String, default=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at = Column(String, default=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class DBChunk(Base):
     __tablename__ = "chunks"
     chunk_id = Column(String, primary_key=True, index=True)
     document_id = Column(String, index=True)
-    chunk_index = Column(Integer)
+    chunk_index = Column(Integer, default=0)
     content = Column(Text, nullable=False)
     page_number = Column(Integer, nullable=True)
     section = Column(String, nullable=True)
     heading = Column(String, nullable=True)
     source_type = Column(String, default="markdown")
     metadata_json = Column(Text, default="{}")
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(String, default=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class DBConcept(Base):
     __tablename__ = "concepts"
     concept_id = Column(String, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True)
+    name = Column(String, index=True)
     description = Column(Text, default="")
     aliases_json = Column(Text, default="[]")
     confidence = Column(Float, default=1.0)
@@ -63,12 +63,20 @@ class DBKnowledgeGap(Base):
     title = Column(String, index=True)
     description = Column(Text)
     gap_type = Column(String, default="missing_concept")
+    gap_types_json = Column(Text, default="[]")
     confidence = Column(Float, default=0.8)
     priority_score = Column(Float, default=0.8)
+    personal_relevance = Column(Float, default=0.8)
+    structural_importance = Column(Float, default=0.8)
+    current_relevance = Column(Float, default=0.8)
+    consequence = Column(Float, default=0.8)
+    counterfactual_impact = Column(Text, default="")
+    evidence_signals_json = Column(Text, default="[]")
+    coverage_matrix_json = Column(Text, default="{}")
     related_concepts_json = Column(Text, default="[]")
     status = Column(String, default="candidate")
     reason = Column(Text, default="")
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(String, default=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class DBResearchRun(Base):
@@ -85,6 +93,7 @@ class DBResearchRun(Base):
     evidence_extracted = Column(Integer, default=0)
     claims_made = Column(Integer, default=0)
     claims_count = Column(Integer, default=0)
+    checklist_json = Column(Text, default="[]")
     budget_json = Column(Text, default="{}")
     knowledge_snapshot = Column(Text, default="")
     final_reason = Column(String, nullable=True)
@@ -177,6 +186,28 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
+    # Non-destructive migration for SQLite columns
+    if "sqlite" in settings.DATABASE_URL:
+        with engine.connect() as conn:
+            try:
+                res = conn.execute(text("PRAGMA table_info(knowledge_gaps)"))
+                cols = {row[1] for row in res.fetchall()}
+                new_cols = [
+                    ("gap_types_json", "TEXT DEFAULT '[]'"),
+                    ("personal_relevance", "FLOAT DEFAULT 0.8"),
+                    ("structural_importance", "FLOAT DEFAULT 0.8"),
+                    ("current_relevance", "FLOAT DEFAULT 0.8"),
+                    ("consequence", "FLOAT DEFAULT 0.8"),
+                    ("counterfactual_impact", "TEXT DEFAULT ''"),
+                    ("evidence_signals_json", "TEXT DEFAULT '[]'"),
+                    ("coverage_matrix_json", "TEXT DEFAULT '{}'"),
+                ]
+                for col_name, col_type in new_cols:
+                    if col_name not in cols:
+                        conn.execute(text(f"ALTER TABLE knowledge_gaps ADD COLUMN {col_name} {col_type}"))
+                conn.commit()
+            except Exception:
+                pass
 
 
 # Auto-initialize tables on module load
