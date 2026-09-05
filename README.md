@@ -4,42 +4,59 @@ An autonomous, local-first AI research assistant and knowledge gap filler. The a
 
 ---
 
-## 🌟 Key Features
+## 🚀 The Vision
 
-* 📂 **Multi-Format Document Ingestion**: Ingest Markdown (`.md`), Text (`.txt`), and PDF (`.pdf`) documents from dedicated topic folders with automatic chunking and deduplication.
-* 🕸️ **Knowledge Graph & Topology**: Automatically extracts concepts, keywords, and relationship triples (`relates_to`, `is_part_of`) to construct a traversable knowledge graph.
-* 🔬 **Deep Knowledge Gap Engine (Multi-Stage Reasoning)**:
-  * **Structured Knowledge Modeling**: Derives structured profiles across functional knowledge roles (`FOUNDATIONAL`, `MECHANISM`, `IMPLEMENTATION`, `EVALUATION`, `LIMITATION`, `FAILURE_MODE`, `SECURITY`, `TRADEOFF`, `OPERATIONAL`, `TEMPORAL`).
-  * **Knowledge Depth & Coverage Matrix**: Computes a 0–5 depth scale per role to diagnose structural imbalances (e.g. *Deep Implementation = 5 + Zero Evaluation = 0*).
-  * **Multi-Signal Candidate Generation**: Flags structural omissions, missing prerequisites, evaluation voids, security omissions, and temporal/frontier drift.
-  * **Significance & Counterfactual Analysis**: Filters out trivial 1-off words and evaluates practical consequences (*"What will fail or be misunderstood if this knowledge remains missing?"*).
-  * **Dual-Relevance Scoring**: Separates **Personal Relevance** from **Current SOTA Relevance (2026)**.
-* 🤖 **Autonomous Real-World Web Research Loop**:
-  * Real-time web search via **Brave Search API** & **DuckDuckGo** (`ddgs`) with zero mock or fake data.
-  * Deep web page scraping with realistic browser headers, BeautifulSoup content sanitization, and fallback extraction.
-  * Scaled research budgets (up to 25 sources and 15 results per query) to satisfy multi-source corroboration.
-* ⚖️ **Multi-Source Confidence & Verification Engine**:
-  * **Strict Multi-Source Rubric**:
-    * **$\ge 90\%$ Confidence**: Corroborated by $\ge 10$ distinct web sources.
-    * **$\ge 80\%$ Confidence**: Corroborated by $\ge 7$ distinct web sources.
-    * **$\ge 75\%$ Confidence**: Corroborated by $> 5$ distinct web sources (6 sources).
-    * **$60\%$ Confidence**: Corroborated by exactly 5 distinct web sources.
-    * **$< 60\%$ Confidence (Quarantine & Warning)**: $< 5$ sources (flagged with warnings and quarantined for re-verification).
-  * Synthesizer quality filter: Only claims with $\ge 75\%$ confidence are included in the Core Findings section.
-* 📂 **Dual-Destination Research Persistence**:
-  * Approved research markdown files are automatically saved to two destinations:
-    1. Dedicated research archive (`data/documents/research/`).
-    2. Origin source folder from which the analyzed document originated (e.g. `data/documents/llm_hallucinations/`).
-* 📊 **Live Dashboard & Real-Time Gap Lifecycle Tracking**:
-  * Real-time dashboard metric cards: **Active Gaps**, **Resolved Gaps**, **Proposals in Review**, and **Total Documents**.
-  * Instant lifecycle synchronization: approving a research proposal immediately marks the gap as `resolved`, removes it from the active knowledge gap view, and updates dashboard counters without requiring page refreshes.
-* 🛡️ **Fault-Tolerant Chunking & Ingestion Engine**:
-  * Heading-aware text chunker with a 3-tier retry loop. If any section fails, the entire document is automatically re-chunked.
-  * Automatic fallback to paragraph-only chunking if heading parsing fails.
-  * Database transaction rollback with fresh UUID generation on insertion errors to prevent partial document states.
-  * Pipeline-level cleanup in `index_service.py` that purges partial Chroma vectors and SQLite records before retrying.
-* 📈 **Evaluation & Benchmark Suite (Spec 11)**:
-  * Automated synthetic benchmark runner measuring **Citation Grounding**, **Multi-Source Consensus**, and **Proposal Structural Completeness**.
+We all have folders full of Markdown notes, PDFs, and text files. But **how do you know what you *don't* know?** 
+
+This agent acts as your intellectual mirror. It ingests your personal knowledge, builds a semantic graph of your expertise, runs a **multi-stage "Deep Gap" analysis** to pinpoint structural weaknesses in your understanding, and then autonomously surfs the web to bring back peer-reviewed, cross-referenced research proposals for you to approve or reject.
+
+**The Core Promise**: Transform your static note-dump into a living, self-improving knowledge ecosystem—all while keeping your data 100% local (if you use Ollama).
+
+---
+
+## ✨ What It Actually Does (Features)
+
+- **📄 Multi-Format Ingestion**: Eats `.md`, `.txt`, and `.pdf` files. Automatically chunks them intelligently (with fallbacks if your formatting is messy).
+- **🧠 Knowledge Graph Extraction**: Spits out concepts, keywords, and relationship triples (`X relates_to Y`) to build a traversable map of your brain.
+- **🔍 Deep Knowledge Gap Engine** (The Crown Jewel):
+  - Analyzes your knowledge across **10 functional roles** (Foundational, Mechanism, Implementation, Evaluation, Limitation, Failure Mode, Security, Tradeoff, Operational, Temporal).
+  - Scores your depth per role (0 to 5).
+  - Performs **counterfactual analysis** ("What breaks if this knowledge is missing?").
+- **🌐 Autonomous Web Research**: Queries Brave Search or DuckDuckGo, scrapes the top results, and synthesizes findings.
+- **📊 Multi-Source Confidence Scoring**: Weighs claims based on how many independent sources back them up (10+ sources = 90% confidence in the system's heuristic).
+- **💾 Dual Persistence**: Approved research gets saved both to a central `research/` archive *and* injected back into your original source folder (so your knowledge base stays updated).
+- **📈 Real-time Dashboard**: Live metrics on active gaps, resolved gaps, and pending proposals with SSE (Server-Sent Events) auto-updates.
+
+---
+---
+
+## 🎮 The Full Workflow (From Import to Approval)
+
+### Step 1: Ingest Your Knowledge
+- Place your `.md`, `.txt`, or `.pdf` files into subfolders inside `data/documents/` (e.g., `data/documents/AI_Notes/`).
+- On the Dashboard, click **"Scan & Ingest Folder"**. The backend will chunk the text, generate embeddings, and store them in ChromaDB.
+
+### Step 2: Scan for "Deep Gaps"
+- Navigate to the **"Knowledge Gaps"** tab.
+- Click **"Scan for Deep Gaps"**. 
+- *Wait a few minutes* (the engine runs 3-stage reasoning over your vectors). The system will generate a list of missing concepts, each tagged with a severity score and a counterfactual consequence.
+
+### Step 3: Run Autonomous Research
+- Find a gap that worries you (e.g., "Missing implementation details on X").
+- Click **"Research Gap"**. Alternatively, go to the **"Research Workspace"** and type a custom query.
+- The agent will fire up to 15 search queries, scrape 25 sources, and synthesize a draft proposal.
+
+### Step 4: Review the Proposal
+- Switch to the **"Proposals & Approval"** tab.
+- Read the synthesized research. Look at the **Confidence Score** (color-coded: Green = >80%, Yellow = 60-80%, Red = <60%).
+- **Critical Check**: Manually verify the citations. The system validates *count*, not *content* (see limitations below).
+
+### Step 5: Approve & Persist
+- Click **"Approve"**.
+- The markdown file is instantly saved to:
+  1. `data/documents/research/` (central archive).
+  2. The *original source folder* you ingested earlier (e.g., `data/documents/AI_Notes/`).
+- The dashboard counter updates, and the gap moves from "Active" to "Resolved".
 
 ---
 
@@ -83,31 +100,6 @@ You can run the benchmark suite at any time from the **Evaluation & Metrics** ta
 
 ---
 
-## 🏗️ Architecture Overview
-
-```
-                          ┌───────────────────────────┐
-                          │   React + Vite Frontend   │
-                          │   (Port 3000 / Modern UI) │
-                          └─────────────┬─────────────┘
-                                        │ REST / SSE
-                                        ▼
-                          ┌───────────────────────────┐
-                          │      FastAPI Backend      │
-                          │        (Port 8000)        │
-                          └──────┬─────────────┬──────┘
-                                 │             │
-                 ┌───────────────┴──┐       ┌──┴───────────────┐
-                 ▼                  ▼       ▼                  ▼
-       ┌──────────────────┐  ┌───────────┐ ┌─────────────┐ ┌───────────────┐
-       │   SQLite DB      │  │ ChromaDB  │ │ Local Ollama│ │ Search Engine │
-       │ (Runs, Proposals,│  │  Vector   │ │ (LLM +      │ │ (Brave Search/│
-       │  Concepts, Gaps) │  │  Chunks)  │ │  Embeddings)│ │  DuckDuckGo)  │
-       └──────────────────┘  └───────────┘ └─────────────┘ └───────────────┘
-```
-
----
-
 ## 📋 Prerequisites
 
 1. **Python**: Python 3.10 to 3.14 (with virtual environment support).
@@ -122,122 +114,56 @@ You can run the benchmark suite at any time from the **Evaluation & Metrics** ta
 4. **Brave Search API Key (Recommended for live web search)**:
    * Obtain a free API key at [brave.com/search/api/](https://brave.com/search/api/).
 
----
+## 🛠️ Tech Stack
 
-## ⚙️ Configuration (`.env`)
-
-Create or edit the `.env` file in the project root:
-
-```ini
-# App Settings
-APP_NAME=Personal Knowledge Research Agent
-DEBUG=true
-HOST=0.0.0.0
-PORT=8000
-
-# Storage Paths
-DATA_DIR=data
-DOCUMENTS_DIR=data/documents
-CHROMA_DIR=data/chroma
-DATABASE_URL=sqlite:///data/database/app.db
-KNOWLEDGE_DIR=data/knowledge
-
-# --- LLM with Ollama ---
-LLM_PROVIDER=ollama
-LLM_MODEL=llama3.2
-LLM_BASE_URL=http://localhost:11434/v1
-LLM_TEMPERATURE=0.2
-
-# --- Vector Embeddings with Ollama ---
-EMBEDDING_PROVIDER=ollama
-EMBEDDING_MODEL=nomic-embed-text
-EMBEDDING_DIM=768
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_EMBED_MODEL=nomic-embed-text
-OLLAMA_LLM_MODEL=llama3.2
-
-# --- Web Search Provider (brave / duckduckgo) ---
-SEARCH_PROVIDER=brave
-BRAVE_SEARCH_API_KEY=your_brave_api_key_here
-
-# Research Budgets & Multi-Source Limits
-MAX_RESEARCH_ITERATIONS=8
-MAX_SEARCH_QUERIES=15
-MAX_SOURCES_PER_RUN=25
-MAX_FETCHES_PER_RUN=25
-MAX_RUNTIME_MINUTES=10
-FETCH_TIMEOUT_SECONDS=15
-MAX_CONTENT_LENGTH_BYTES=1000000
-```
+| Layer | Technology |
+| :--- | :--- |
+| **Backend Framework** | FastAPI (Python 3.10+) |
+| **Vector DB** | ChromaDB (Local) |
+| **Relational DB** | SQLite (via SQLAlchemy) |
+| **LLM Interface** | Ollama (Optional) / OpenAI Compatible |
+| **Web Scraping** | BeautifulSoup4 + Requests (Static) |
+| **Search APIs** | Brave Search / DuckDuckGo (`ddgs`) |
+| **Frontend** | React 18 + Vite + Tailwind CSS |
+| **Testing** | Pytest (Unit & Integration Mocks) |
 
 ---
 
-## 🚀 Quick Start Guide
+## ⚡ Quick Start (Getting It Running)
 
-### Step 1: Start the Backend Server
+> **⚠️ Prerequisite Warning**: This is a heavy local stack. Ensure you have at least 8GB of RAM free. 
 
-#### On PowerShell (Windows):
-```powershell
-.\backend\venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-#### On Git Bash (Windows) / macOS / Linux:
+### 1. Clone & Environment
 ```bash
-./backend/venv/Scripts/python.exe -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+git clone https://github.com/Sri-Nidhi-25/Personal-Knowledge-Research-Agent.git
+cd Personal-Knowledge-Research-Agent
 ```
 
-*Backend API Documentation is available at:* `http://localhost:8000/docs`
-
----
-
-### Step 2: Start the Frontend UI
-
-In a new terminal window:
-
-#### On PowerShell:
-```powershell
-$env:PATH = "D:\Personal Knowledge gap filler\tools\node;" + $env:PATH
-cd frontend
-npm run dev
-```
-
-#### On Git Bash:
+### 2. Backend Setup (Python)
 ```bash
-export PATH="/d/Personal Knowledge gap filler/tools/node:$PATH"
-cd frontend
-npm run dev
+python -m venv backend/venv
+source backend/venv/bin/activate  # On Windows: backend\venv\Scripts\activate
+pip install -r backend/requirements.txt
 ```
 
-*Open your browser and navigate to:* `http://localhost:3000/`
+### 3. Frontend Setup (Node)
+```bash
+cd frontend
+npm install
+cd ..
+```
 
----
+### 4. Pull Local Models (if using Ollama)
+```bash
+ollama pull llama3.2
+ollama pull nomic-embed-text
+```
 
-## 📖 How to Use the System
+### 5. Run the Stack
+- **Terminal 1 (Backend)**: `uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload`
+- **Terminal 2 (Frontend)**: `cd frontend && npm run dev`
 
-### 1. Ingest Knowledge Documents
-* Place your `.md`, `.txt`, or `.pdf` research notes inside a subfolder under `data/documents/` (e.g. `data/documents/llm_hallucinations/`).
-* In the UI under **Dashboard**, enter `data/documents/llm_hallucinations` into the **Ingest Local Folder** field and click **Scan & Ingest Folder**.
-* The agent chunks each file with retry protection, indexes vectors into ChromaDB, and builds the initial concept graph.
-
-### 2. Scan for Deep Knowledge Gaps
-* Switch to the **Knowledge Gaps** tab.
-* Click **Scan for Deep Gaps**.
-* The **Deep Knowledge Gap Engine** analyzes knowledge depth across roles (`FOUNDATIONAL`, `MECHANISM`, `IMPLEMENTATION`, `EVALUATION`, `SECURITY`, `TEMPORAL`), assesses counterfactual impact, and surfaces high-value research opportunities.
-
-### 3. Run Autonomous Research
-* Click **Research Gap** on any discovered gap (or enter a custom query in the **Research Workspace** tab).
-* The research loop runs asynchronously in a background thread with live SSE streaming.
-* It searches live web sources (Brave/DuckDuckGo), scrapes content, extracts evidence, clusters cross-source claims, and calculates multi-source confidence scores.
-
-### 4. Review and Approve Proposals
-* Switch to the **Proposals & Approval** tab.
-* Inspect the synthesized findings (strictly $\ge 75\%$ confidence), sources, and relationship triples.
-* Click **Approve**.
-* The proposal is saved to both `data/documents/research/` and the original topic folder, the gap is marked as **resolved** and removed from the active gaps view, and the dashboard metrics update live.
-
-### 5. Run Evaluation Benchmarks
-* Switch to the **Evaluation & Metrics** tab.
-* Click **Run Benchmark Suite** to measure Citation Grounding, Consensus Ratio, and Proposal Completeness scores across synthetic benchmarks.
+Access the UI at `http://localhost:3000` and the API docs at `http://localhost:8000/docs`.
 
 ---
 
@@ -288,6 +214,38 @@ The test suite covers unit tests, deep gap engine, chunking retries, claim verif
 ├── tools/node/               # Portable Node.js binaries
 └── .env                      # Application environment configuration
 ```
+---
+
+## 🧠 How It Thinks (Architecture)
+
+```mermaid
+graph TD
+    A[Your Documents] --> B(Ingestion & Chunking);
+    B --> C[ChromaDB Vectors + SQLite Graph];
+    C --> D[Deep Gap Engine];
+    D -->|Identifies Weaknesses| E[Research Loop];
+    E --> F[Brave / DuckDuckGo];
+    F --> G[Web Scraper & Synthesizer];
+    G --> H[Confidence Validator];
+    H --> I[Research Proposal];
+    I --> J[User Approval];
+    J --> K[Write-back to Source & Archive];
+    
+    style D fill:#f9f,stroke:#333,stroke-width:4px
+    style H fill:#ff9,stroke:#333,stroke-width:2px
+```
+---
+
+## 🚀 Future Roadmap (Fixing the Bad)
+
+We aren't delusional. Here is the concrete roadmap to turn this prototype into a warhorse:
+
+- **[Q4 2026] Dynamic Web Rendering**: Replace BeautifulSoup with **Playwright** or **Selenium** to handle JavaScript-heavy SPAs. 
+- **[Q4 2026] Router Architecture**: Route *structural reasoning* tasks (Gap analysis) to a strong remote model (GPT-4o-mini) while keeping *embedding* and *simple extraction* local, giving users a hybrid privacy/performance toggle.
+- **[Q1 2027] Citation Backtracking**: Implement a verifier that actually scrapes the cited URL and checks if the quoted sentence exists verbatim (semantic similarity check). Confidence scores will be based on *textual overlap*, not just URL count.
+- **[Q1 2027] Git Integration**: Instead of directly writing back to source folders, we will generate a Git diff/Pull Request structure so users can review changes line-by-line before merging.
+- **[Q2 2027] Async Job Queue**: Replace blocking SSE loops with **Celery + Redis** to handle background tasks with proper lifecycle management, pausing, and cancellation.
+- **[Q2 2027] Robust Search Abstraction**: Build an internal headless browser fallback for DuckDuckGo and add a strict rate-limiter for Brave to prevent hard crashes.
 
 ---
 
